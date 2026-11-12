@@ -4,223 +4,301 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;height:100%}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>
 <title>F-150 Coyote Dash</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <style>
-/* Layout: gauge strip on top; gear | speedometer | top-view truck with tire pressures; shift log; replay + live controls. */
+/* Layout: slim top bar (connect, status, full screen, theme) · swipeable pages, three big readings each · page dots. */
 :root{
   --bg:#eef1f6; --panel:#ffffff; --line:#d5dbe6; --track:#e3e8f0; --fg:#141a29; --dim:#5d6780;
   --accent:#0a74c9; --needle:#d6336c; --ok:#178a4c; --warn:#b86e00; --bad:#c92a2a; --row:#eaf2fb;
+  --earth:#c9b79c; --earthline:#8a7458; --sky:#e7f0fb;
   --display:"Chakra Petch",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#07080f; --panel:#0e1120; --line:#1d2340; --track:#1a1f38; --fg:#dfe4ff; --dim:#7a82a8;
-  --accent:#38e1ff; --needle:#ff2e88; --ok:#3ef08a; --warn:#ffb020; --bad:#ff5c5c; --row:#15193a; color-scheme:dark } }
+  --accent:#38e1ff; --needle:#ff2e88; --ok:#3ef08a; --warn:#ffb020; --bad:#ff5c5c; --row:#15193a;
+  --earth:#3a2f22; --earthline:#9c8160; --sky:#101631; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#07080f; --panel:#0e1120; --line:#1d2340; --track:#1a1f38; --fg:#dfe4ff; --dim:#7a82a8;
-  --accent:#38e1ff; --needle:#ff2e88; --ok:#3ef08a; --warn:#ffb020; --bad:#ff5c5c; --row:#15193a; color-scheme:dark }
-html,body{background:var(--bg);color:var(--fg)}
-body{font-family:var(--mono);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px}
-.wrap{max-width:1180px;margin:0 auto;display:grid;gap:12px}
-header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
-h1{font-family:var(--display);font-size:1.3rem;margin:0;letter-spacing:.04em}
-.sub{color:var(--dim);font-size:.78rem}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}
+  --accent:#38e1ff; --needle:#ff2e88; --ok:#3ef08a; --warn:#ffb020; --bad:#ff5c5c; --row:#15193a;
+  --earth:#3a2f22; --earthline:#9c8160; --sky:#101631; color-scheme:dark }
+html,body{height:100%;background:var(--bg);color:var(--fg)}
+body{font-family:var(--mono);padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));padding-block:8px;box-sizing:border-box;overflow:hidden}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:6px;max-width:1500px;margin:0 auto}
 .lbl{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.note{color:var(--dim);font-size:.74rem;line-height:1.45}
 .big{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
-.note{color:var(--dim);font-size:.74rem;line-height:1.5}
-
-/* gauge strip */
-.gauges{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;padding-block:16px}
-.gauge{display:grid;justify-items:center;gap:2px;text-align:center}
-.gauge svg{width:100%;max-width:180px;height:auto;overflow:visible}
-.gauge .track{fill:none;stroke:var(--track);stroke-width:10;stroke-linecap:round}
-.gauge .zone{fill:none;stroke:var(--bad);stroke-width:3;opacity:.55}
-.gauge .zw{fill:none;stroke:var(--warn);stroke-width:3;opacity:.55}
-.gauge .fill{fill:none;stroke:var(--accent);stroke-width:10;stroke-linecap:round;transition:stroke .15s}
-.gauge.warn .fill{stroke:var(--warn)} .gauge.warn .v{fill:var(--warn)}
-.gauge.bad .fill{stroke:var(--bad);filter:drop-shadow(0 0 5px var(--bad))} .gauge.bad .v{fill:var(--bad)}
-.gauge.bad svg{animation:pulse .5s ease-in-out infinite alternate}
-@keyframes pulse{to{transform:scale(1.04)}}
-.gauge .v{font-family:var(--display);font-weight:700;font-size:22px;fill:var(--fg);transition:fill .15s}
-.gauge .u{font-size:10px;fill:var(--dim);font-family:var(--mono)}
-
-/* main row */
-.main{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch}
 .val{font-variant-numeric:tabular-nums;font-weight:600}
-.motion{display:grid;gap:6px;align-content:start}
-.gball{width:100%;max-width:150px;height:auto;justify-self:center}
-.gball .ring{fill:none;stroke:var(--line);stroke-width:1.5} .gball .axis{stroke:var(--line);stroke-width:1}
-.gball .gl{font-size:8px;fill:var(--dim);font-family:var(--mono)}
+
+/* top bar */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand b{font-family:var(--display);font-size:1.05rem;letter-spacing:.04em}
+#status{flex:1 1 160px;min-width:0;max-width:440px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+button,select,input[type=text]{font:inherit;font-size:.8rem;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+button,select{cursor:pointer} button:disabled,select:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+button:focus-visible,select:focus-visible,input:focus-visible,.pages:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* swipe pages */
+.pages{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;min-height:0}
+.pages::-webkit-scrollbar{display:none}
+.page{flex:0 0 100%;scroll-snap-align:start;scroll-snap-stop:always;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-height:0;min-width:0;box-sizing:border-box;padding-inline:1px}
+.slot{background:var(--panel);border:1px solid var(--line);border-radius:14px;display:grid;justify-items:center;align-content:center;gap:6px;padding:10px;min-height:0;min-width:0;overflow:hidden;text-align:center}
+.wide{grid-column:1/-1}
+.dots{display:flex;justify-content:center;gap:8px}
+.dots button{width:10px;height:10px;padding:0;border-radius:50%;background:var(--line);border:0}
+.dots button[aria-current="true"]{background:var(--accent);width:26px;border-radius:6px}
+
+/* gauges */
+.gauge{display:grid;grid-template-rows:minmax(0,1fr) auto;justify-items:center;width:100%;height:100%;min-height:0}
+.gauge svg{width:100%;height:100%;max-width:340px;min-height:0;overflow:visible}
+.gauge .track{fill:none;stroke:var(--track);stroke-width:9;stroke-linecap:round}
+.gauge .zone{fill:none;stroke:var(--bad);stroke-width:3;opacity:.6} .gauge .zw{fill:none;stroke:var(--warn);stroke-width:3;opacity:.6}
+.gauge .fill{fill:none;stroke:var(--accent);stroke-width:9;stroke-linecap:round;transition:stroke .15s}
+.gauge .v{font-family:var(--display);font-weight:700;font-size:21px;fill:var(--fg);transition:fill .15s}
+.gauge .u{font-size:8px;fill:var(--dim);font-family:var(--mono)}
+.gauge .lbl{font-size:.8rem}
+.gauge.warn .fill{stroke:var(--warn)} .gauge.warn .v{fill:var(--warn)}
+.gauge.bad .fill{stroke:var(--bad);filter:drop-shadow(0 0 4px var(--bad))} .gauge.bad .v{fill:var(--bad)}
+.gauge.bad svg{animation:pulse .5s ease-in-out infinite alternate}
+@keyframes pulse{to{transform:scale(1.03)}}
+
+/* drive page */
+.speednum{font-family:var(--display);font-weight:700;font-variant-numeric:tabular-nums;line-height:.9;font-size:clamp(64px,min(20vw,40vh),280px)}
+#gear{font-size:clamp(56px,min(13vw,30vh),210px);border:4px solid var(--accent);color:var(--accent);border-radius:16px;padding:.08em .28em}
+#gear.shifting{border-color:var(--warn);color:var(--warn)} #gear.stopped{opacity:.45}
+.lamp{font-family:var(--display);font-weight:700;letter-spacing:.15em;padding:5px 16px;border-radius:8px;border:2px solid var(--line);color:var(--dim)}
+.lamp.on{background:var(--bad);border-color:var(--bad);color:var(--panel)} .lamp.guess{border-color:var(--bad);color:var(--bad)}
+.pill{padding:1px 7px;border-radius:10px;font-size:.7rem;border:1px solid currentColor}
+.p-good{color:var(--ok)} .p-ok{color:var(--warn)} .p-slow{color:var(--bad)} .p-down{color:var(--dim)}
+
+/* inclinometers */
+.ang{grid-template-rows:auto minmax(0,1fr) auto}
+.dial{width:100%;height:100%;max-width:330px;min-height:0}
+.dial .face{fill:var(--sky);stroke:var(--line);stroke-width:2}
+.dial .earth{fill:var(--earth)} .dial .earthline{stroke:var(--earthline);stroke-width:2}
+.dial .horizon{stroke:var(--dim);stroke-width:1.2;stroke-dasharray:5 4;opacity:.8}
+.dial .tick{stroke:var(--dim);stroke-width:1.5} .dial .tick.major{stroke-width:2.5}
+.dial .tl{font-family:var(--mono);font-size:10px;fill:var(--dim);text-anchor:middle}
+.dial .zg{fill:none;stroke:var(--ok);stroke-width:5} .dial .za{fill:none;stroke:var(--warn);stroke-width:5} .dial .zr{fill:none;stroke:var(--bad);stroke-width:5}
+.dial .ptr{fill:var(--needle)}
+.dial .body{fill:var(--fg)} .dial .glass{fill:var(--sky);opacity:.9} .dial .trim{fill:none;stroke:var(--sky);stroke-width:1.2;opacity:.7}
+.dial .tyre{fill:var(--fg)} .dial .rim{fill:var(--sky);opacity:.85} .dial .hub{fill:var(--fg)}
+.dial .lightr{fill:var(--bad)} .dial .lighta{fill:var(--warn)}
+.dial g.rot{transition:transform .25s ease-out;transform-box:view-box;transform-origin:120px 120px} /* rotate about the dial centre */
+.ang.warn .ptr,.ang.warn .body{fill:var(--warn)} .ang.bad .ptr,.ang.bad .body{fill:var(--bad)}
+.angread{display:flex;align-items:baseline;gap:8px;justify-content:center}
+.angnum{font-family:var(--display);font-weight:700;font-size:clamp(24px,6vh,44px);font-variant-numeric:tabular-nums}
+.ang.warn .angnum{color:var(--warn)} .ang.bad .angnum{color:var(--bad)}
+.gball{width:100%;height:100%;max-width:280px;min-height:0}
+.gball .face{fill:var(--sky);stroke:var(--line);stroke-width:1.5}
+.gball .ring{fill:none;stroke:var(--line);stroke-width:1} .gball .axis{stroke:var(--line);stroke-width:1}
+.gball .gl{font-size:6px;fill:var(--dim);font-family:var(--mono)}
 .gball .gdot{fill:var(--needle)}
-.angles{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.ang{margin:0;display:grid;justify-items:center;gap:2px;text-align:center}
-.ang svg{width:100%;max-width:110px;height:auto}
-.ang figcaption{display:grid;gap:1px;font-size:.78rem}
-.ang .ground{stroke:var(--dim);stroke-width:2}
-.ang .tb{fill:var(--accent);opacity:.85} .ang .tw{fill:var(--fg)}
-.ang g{transition:transform .2s} .ang.warn .tb{fill:var(--warn)} .ang.bad .tb{fill:var(--bad)}
-@media (prefers-reduced-motion: reduce){.ang g{transition:none}}
-.gearcol{display:grid;align-content:center;justify-items:center;gap:10px;text-align:center}
-#gear{font-size:4.6rem;border:3px solid var(--accent);color:var(--accent);border-radius:10px;width:110px;height:120px;display:grid;place-items:center}
-#gear.shifting{border-color:var(--warn);color:var(--warn)}
-#gear.stopped{opacity:.45}
-#shiftMsg{min-height:3em}
-.lamp{font-family:var(--display);font-weight:700;letter-spacing:.15em;padding:6px 16px;border-radius:6px;border:2px solid var(--line);color:var(--dim)}
-.lamp.on{background:var(--bad);border-color:var(--bad);color:var(--panel)}
-.lamp.guess{border-color:var(--bad);color:var(--bad)}
-.speedo{display:grid;place-items:center}
-.speedo svg{width:100%;max-width:340px;height:auto}
-.speedo .track{fill:none;stroke:var(--track);stroke-width:14;stroke-linecap:round}
-.speedo .fill{fill:none;stroke:var(--needle);stroke-width:14;stroke-linecap:round}
-.speedo .tick{stroke:var(--dim);stroke-width:2}
-.speedo .tl{font-size:12px;fill:var(--dim);font-family:var(--mono);text-anchor:middle}
-.speedo .v{font-family:var(--display);font-weight:700;font-size:78px;fill:var(--fg);text-anchor:middle}
-.speedo .u{font-size:14px;fill:var(--dim);letter-spacing:.15em;text-anchor:middle;font-family:var(--mono)}
+.gslot{grid-template-rows:auto minmax(0,1fr) auto auto}
+.grow{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btnrow{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 
-/* truck top view */
-.truckcol{display:grid;justify-items:center;gap:6px}
-.truckcol svg{width:100%;max-width:300px;height:auto}
-.body{fill:var(--track);stroke:var(--dim);stroke-width:2}
-.glass{fill:var(--line);stroke:var(--dim);stroke-width:1.5}
-.bedline{stroke:var(--dim);stroke-width:1.5;fill:none}
+/* tires */
+.truckimg{width:100%;height:100%;max-width:520px;min-height:0}
+.truckimg .body{fill:var(--track);stroke:var(--dim);stroke-width:2}
+.truckimg .glass{fill:var(--line);stroke:var(--dim);stroke-width:1.5}
+.truckimg .bedline{stroke:var(--dim);stroke-width:1.5;fill:none}
 .tyre{fill:var(--ok)} .tyre.warn{fill:var(--warn)} .tyre.bad{fill:var(--bad)} .tyre.none{fill:var(--line);stroke:var(--dim);stroke-dasharray:3 3}
-.tp{font-family:var(--display);font-weight:700;font-size:17px;fill:var(--fg)} .tp.none{fill:var(--dim);font-size:13px}
-.tpl{font-size:9.5px;fill:var(--dim);font-family:var(--mono);letter-spacing:.1em}
+.tp{font-family:var(--display);font-weight:700;font-size:22px;fill:var(--fg)} .tp.none{fill:var(--dim);font-size:15px}
+.tpl{font-size:10px;fill:var(--dim);font-family:var(--mono);letter-spacing:.1em}
 
-.log{max-height:220px;overflow:auto;margin-top:8px;font-size:.78rem}
+/* trip page */
+.trip .slot{align-content:start;justify-items:stretch;text-align:left;overflow:auto}
+.log{font-size:.78rem;overflow:auto;min-height:0}
 .log table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 .log td,.log th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 .log tbody tr{cursor:pointer} .log tr.cur td{background:var(--row)}
-.pill{padding:1px 7px;border-radius:10px;font-size:.7rem;border:1px solid currentColor}
-.p-good{color:var(--ok)} .p-ok{color:var(--warn)} .p-slow{color:var(--bad)} .p-down{color:var(--dim)}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-button,select,input[type=text]{font:inherit;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 12px}
-button,select{cursor:pointer}
-button:disabled,select:disabled{opacity:.5;cursor:default}
-button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input[type=range]{flex:1;min-width:160px;accent-color:var(--needle)}
-#uuid{flex:1;min-width:200px;background:var(--bg)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+input[type=range]{flex:1;min-width:140px;accent-color:var(--needle)}
+#uuid{flex:1;min-width:180px;background:var(--bg)}
 #clock{font-variant-numeric:tabular-nums;color:var(--dim)}
-@media (max-width:900px){.gauges{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:520px){.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:900px){.main{grid-template-columns:1fr 1fr}.speedo{grid-column:1/-1;order:-1}}
-/* Phone on a vent mount, sideways: one screen, no scrolling for the driving view. */
-@media (orientation:landscape) and (max-height:520px){
-  body{padding-block:4px}.wrap{gap:5px}.panel{padding:5px 8px}
-  header h1{font-size:.85rem}header button{padding:3px 8px;font-size:.75rem}.sub,.note:not(#shiftMsg):not(#decel):not(#status),.shiftlog,.replaybar{display:none}
-  .gauges{grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding-block:6px}.gauge svg{max-width:58px}.gauge .lbl{font-size:.55rem}
-  .main{grid-template-columns:minmax(0,.8fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:6px}.speedo{grid-column:auto;order:0}
-  .speedo svg{max-height:175px}.truckcol svg{max-height:160px}.gball{display:none}.ang svg{max-width:80px}.motion{gap:3px}.motion .row{font-size:.75rem}
-  .controls{gap:6px}.controls button,#uuid{padding:4px 8px;font-size:.8rem}
-  #gear{font-size:2.6rem;width:64px;height:70px}.gearcol{gap:4px}#shiftMsg{min-height:0}.lamp{padding:3px 10px;font-size:.75rem}
+
+/* portrait phone: the three readings stack */
+@media (orientation:portrait) and (max-width:700px){
+  .page{grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(0,1fr))}
+  .page.single{grid-template-rows:1fr}
+  .speednum{font-size:clamp(64px,24vw,160px)} #gear{font-size:clamp(48px,16vw,110px)}
 }
-@media (max-width:520px){.main{grid-template-columns:1fr}#gear{font-size:3.6rem;width:90px;height:100px}}
-@media (prefers-reduced-motion: reduce){.gauge .fill,.gauge .v{transition:none}.gauge.bad svg{animation:none}}
+/* landscape phone: tighter chrome so the readings get the space */
+@media (orientation:landscape) and (max-height:520px){
+  body{padding-block:4px}.app{gap:4px}.slot{padding:6px;border-radius:12px;gap:3px}.page{gap:6px}
+  .brand b{font-size:.85rem} button,select{padding:4px 8px;font-size:.72rem}#status{font-size:.66rem}
+  .gauge .lbl{font-size:.68rem}
+}
+@media (prefers-reduced-motion: reduce){.gauge .fill,.gauge .v,.dial g.rot{transition:none}.gauge.bad svg{animation:none}.pages{scroll-behavior:auto}}
 </style>
 </head>
 <body>
 
 
-<div class="wrap">
-  <header>
-    <div>
-      <h1>F-150 5.0 · Live Dash</h1>
-      <span class="sub">Replaying your FORScan log · 12 min 25 s · 6R80 gear from shaft speeds</span>
-    </div>
-    <div class="controls"><button id="sweep" type="button">Test gauges</button><button id="theme" type="button" aria-label="Switch light or dark mode">Dark mode</button></div>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><b>F-150 5.0</b><span class="lbl" id="pageName">Drive</span></div>
+    <button id="connect" type="button" class="primary">Connect</button>
+    <button id="usb" type="button">USB</button>
+    <button id="toReplay" type="button" hidden>Back to replay</button>
+    <span id="status" class="note" role="status">Replay mode · showing your recorded drive</span>
+    <button id="sweep" type="button">Test</button>
+    <button id="fs" type="button">Full screen</button>
+    <button id="theme" type="button" aria-label="Switch light or dark mode">Dark</button>
   </header>
 
-  <section class="panel gauges" id="gauges" aria-label="Engine and transmission gauges"></section>
-
-  <section class="main">
-    <div class="panel gearcol">
-      <div class="lbl">Gear</div>
-      <div id="gear" class="big">1</div>
-      <div id="shiftMsg" class="note"></div>
-      <div id="brake" class="lamp" aria-live="polite">BRAKE</div>
-      <div id="decel" class="note">–</div>
-    </div>
-    <div class="panel speedo">
-      <svg viewBox="0 0 300 250" role="img" aria-label="Speedometer">
-        <path class="track" id="spTrack"></path><path class="fill" id="spFill"></path>
-        <g id="spTicks"></g>
-        <text class="v" id="speed" x="150" y="160">0</text>
-        <text class="u" x="150" y="190">KM/H</text>
-      </svg>
-    </div>
-    <div class="panel truckcol">
-      <div class="lbl">Tires · target 35 psi</div>
-      <svg viewBox="0 0 300 330" role="img" aria-label="Truck from above with tire pressures">
-        <!-- body: hood at top, bed at bottom -->
-        <g transform="translate(35 0)">
-        <rect class="body" x="70" y="20" width="90" height="290" rx="22"></rect>
-        <path class="glass" d="M78 92 Q115 78 152 92 L148 118 Q115 110 82 118 Z"></path>
-        <rect class="glass" x="80" y="176" width="70" height="10" rx="3"></rect>
-        <path class="bedline" d="M80 196 H150 V298 H80 Z M115 200 V294"></path>
-        <rect class="tyre" id="tyLF" x="56" y="46" width="16" height="44" rx="4"></rect>
-        <rect class="tyre" id="tyRF" x="158" y="46" width="16" height="44" rx="4"></rect>
-        <rect class="tyre" id="tyLR" x="56" y="226" width="16" height="44" rx="4"></rect>
-        <rect class="tyre" id="tyRR" x="158" y="226" width="16" height="44" rx="4"></rect>
-        </g>
-        <text class="tpl" x="84" y="56" text-anchor="end">FRONT L</text><text class="tp" id="tpLF" text-anchor="end" x="84" y="76">–</text>
-        <text class="tpl" x="216" y="56">FRONT R</text><text class="tp" id="tpRF" x="216" y="76">–</text>
-        <text class="tpl" x="84" y="236" text-anchor="end">REAR L</text><text class="tp" id="tpLR" text-anchor="end" x="84" y="256">–</text>
-        <text class="tpl" x="216" y="236">REAR R</text><text class="tp" id="tpRR" x="216" y="256">–</text>
-      </svg>
-    </div>
-    <div class="panel motion">
-      <div class="lbl">Motion</div>
-      <svg class="gball" viewBox="0 0 120 120" role="img" aria-label="G-force: dot moves with acceleration, braking and cornering">
-        <circle class="ring" cx="60" cy="60" r="50"></circle><circle class="ring" cx="60" cy="60" r="25"></circle>
-        <line class="axis" x1="60" y1="8" x2="60" y2="112"></line><line class="axis" x1="8" y1="60" x2="112" y2="60"></line>
-        <text class="gl" x="63" y="34">0.5g</text><text class="gl" x="63" y="9">1g</text>
-        <circle class="gdot" id="gdot" cx="60" cy="60" r="6"></circle>
-      </svg>
-      <div class="row"><span class="lbl">Accel / brake</span><span id="glong" class="val">–</span></div>
-      <div class="row"><span class="lbl">Cornering</span><span id="glat" class="val">–</span></div>
-      <div class="angles">
-        <figure class="ang" id="pitchBox">
-          <svg viewBox="0 0 100 60" role="img" aria-label="Vehicle pitch, side view">
-            <line class="ground" x1="4" y1="54" x2="96" y2="54"></line>
-            <g id="pitchTruck"><path class="tb" d="M14 30 H52 V18 H70 L78 28 H88 V42 H14 Z"></path><circle class="tw" cx="28" cy="44" r="7"></circle><circle class="tw" cx="74" cy="44" r="7"></circle></g>
-          </svg>
-          <figcaption><span class="lbl">Pitch</span><span id="pitch" class="val">–</span></figcaption>
-        </figure>
-        <figure class="ang" id="rollBox">
-          <svg viewBox="0 0 100 60" role="img" aria-label="Vehicle roll, rear view">
-            <line class="ground" x1="4" y1="54" x2="96" y2="54"></line>
-            <g id="rollTruck"><path class="tb" d="M28 26 H34 L38 12 H62 L66 26 H72 V44 H28 Z"></path><rect class="tw" x="24" y="38" width="10" height="14" rx="2"></rect><rect class="tw" x="66" y="38" width="10" height="14" rx="2"></rect></g>
-          </svg>
-          <figcaption><span class="lbl">Roll</span><span id="roll" class="val">–</span></figcaption>
-        </figure>
+  <main class="pages" id="pages" tabindex="0" aria-label="Dash pages, swipe left or right">
+    <section class="page" data-name="Drive">
+      <div class="slot"><div class="gauge" id="g0"></div></div>
+      <div class="slot">
+        <div id="speed" class="speednum">0</div>
+        <div class="lbl">km/h</div>
+        <div id="brake" class="lamp" aria-live="polite">BRAKE</div>
+        <div id="decel" class="note">–</div>
       </div>
-      <div class="controls"><button id="motionBtn" type="button">Use phone motion</button><button id="zeroBtn" type="button" hidden>Set level</button></div>
-    </div>
-  </section>
+      <div class="slot">
+        <div class="lbl">Gear</div>
+        <div id="gear" class="big">1</div>
+        <div id="shiftMsg" class="note"></div>
+      </div>
+    </section>
 
-  <section class="panel shiftlog">
-    <div class="row"><span class="lbl">Shift log</span><span class="note" id="shiftSummary"></span></div>
-    <div class="log"><table><thead><tr><th>Time</th><th>Shift</th><th>Took</th><th>RPM</th><th>Grade</th></tr></thead><tbody id="shiftRows"></tbody></table></div>
-  </section>
+    <section class="page" data-name="Temperatures">
+      <div class="slot"><div class="gauge" id="g1"></div></div>
+      <div class="slot"><div class="gauge" id="g2"></div></div>
+      <div class="slot"><div class="gauge" id="g6"></div></div>
+    </section>
 
-  <div class="panel controls replaybar">
-    <button id="play" type="button">Pause</button>
-    <select id="rate" aria-label="Playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option></select>
-    <input id="scrub" type="range" min="0" value="0" aria-label="Drive position">
-    <span id="clock">0:00</span>
-  </div>
-  <div class="panel controls">
-    <button id="connect" type="button">Connect adapter (live)</button>
-    <button id="usb" type="button">Connect USB cable</button>
-    <button id="toReplay" type="button" hidden>Back to replay</button>
-    <input id="uuid" type="text" placeholder="Service UUID (only if connect can't find it)" aria-label="Custom Bluetooth service UUID">
-    <span id="status" class="note" role="status">Replay mode</span>
-  </div>
-  <p class="note">Replay: gear comes from turbine speed (engine RPM minus converter slip) divided by output shaft speed, matched to the 6R80 ratios. Shift time is how long the ratio sits between two gears; FORScan polls each value separately, so times are accurate to about ±100 ms. Only upshifts are graded. Live: the adapter only gives standard engine data, so gear is estimated from RPM and speed using the shaft-to-speed ratio from your log (25.8), and shifts are listed but not timed. Brake: your log has no brake signal, so the lamp lights in outline when speed drops faster than 4 km/h per second, and the decel figure shows how hard. Fuel level isn't in your replay log, so its gauge shows – until you connect live. Rear-left reads 150 psi in the log, which is the code for a missing sensor.</p>
+    <section class="page" data-name="Engine">
+      <div class="slot"><div class="gauge" id="g3"></div></div>
+      <div class="slot"><div class="gauge" id="g4"></div></div>
+      <div class="slot"><div class="gauge" id="g5"></div></div>
+    </section>
+
+    <section class="page" data-name="Angles">
+      <div class="slot ang" id="pitchBox">
+        <div class="lbl">Pitch · side view</div>
+        <svg class="dial" viewBox="0 0 240 240" role="img" aria-label="Pitch inclinometer">
+          <defs><clipPath id="clipPitch"><circle cx="120" cy="120" r="94"></circle></clipPath></defs>
+          <circle class="face" cx="120" cy="120" r="112"></circle>
+          <g class="scale" id="scalePitch"></g>
+          <g class="rot" id="pitchRot">
+            <g clip-path="url(#clipPitch)">
+              <rect class="earth" x="-80" y="158" width="400" height="200"></rect>
+              <line class="earthline" x1="-80" y1="158" x2="320" y2="158"></line>
+              <!-- crew-cab pickup, side profile, facing right -->
+              <g transform="translate(35 101) scale(0.9)">
+                <path class="body" d="M6 47 V26 Q6 22 10 22 H70 L76 5 Q77 2 81 2 H121 Q125 2 128 5 L142 20 Q171 22 178 27 Q182 30 182 35 V47 H168 A18 18 0 0 0 132 47 H58 A18 18 0 0 0 22 47 Z"></path>
+                <path class="glass" d="M81 7 H99 V20 H77 Z"></path>
+                <path class="glass" d="M103 7 H121 Q123 7 125 9 L136 20 H103 Z"></path>
+                <path class="trim" d="M101 22 V44 M70 24 V44 M8 30 H68"></path>
+                <rect class="lightr" x="5" y="26" width="3" height="8" rx="1"></rect>
+                <rect class="lighta" x="177" y="29" width="5" height="4" rx="1"></rect>
+                <circle class="tyre" cx="40" cy="48" r="15"></circle><circle class="rim" cx="40" cy="48" r="8"></circle><circle class="hub" cx="40" cy="48" r="2.5"></circle>
+                <circle class="tyre" cx="150" cy="48" r="15"></circle><circle class="rim" cx="150" cy="48" r="8"></circle><circle class="hub" cx="150" cy="48" r="2.5"></circle>
+              </g>
+            </g>
+            <path class="ptr" d="M120 12 L112 26 H128 Z"></path>
+          </g>
+          <line class="horizon" x1="20" y1="158" x2="220" y2="158"></line>
+        </svg>
+        <div class="angread"><span id="pitch" class="angnum">–</span><span id="pitchDir" class="lbl">tap Use phone motion</span></div>
+      </div>
+
+      <div class="slot ang" id="rollBox">
+        <div class="lbl">Roll · rear view</div>
+        <svg class="dial" viewBox="0 0 240 240" role="img" aria-label="Roll inclinometer">
+          <defs><clipPath id="clipRoll"><circle cx="120" cy="120" r="94"></circle></clipPath></defs>
+          <circle class="face" cx="120" cy="120" r="112"></circle>
+          <g class="scale" id="scaleRoll"></g>
+          <g class="rot" id="rollRot">
+            <g clip-path="url(#clipRoll)">
+              <rect class="earth" x="-80" y="158" width="400" height="200"></rect>
+              <line class="earthline" x1="-80" y1="158" x2="320" y2="158"></line>
+              <!-- pickup from behind: cab, tailgate, lights, tyres -->
+              <g transform="translate(60 80)">
+                <path class="body" d="M30 28 L36 6 Q37 3 41 3 H79 Q83 3 84 6 L90 28 Z"></path>
+                <path class="glass" d="M41 8 H79 L83 24 H37 Z"></path>
+                <path class="body" d="M8 30 Q8 27 11 27 H109 Q112 27 112 30 V62 H8 Z"></path>
+                <path class="trim" d="M18 34 H102 V55 H18 Z M48 44 H72"></path>
+                <rect class="lightr" x="9" y="31" width="6" height="16" rx="1.5"></rect>
+                <rect class="lightr" x="105" y="31" width="6" height="16" rx="1.5"></rect>
+                <rect class="body" x="10" y="62" width="100" height="6" rx="2"></rect>
+                <rect class="tyre" x="12" y="60" width="20" height="18" rx="4"></rect>
+                <rect class="tyre" x="88" y="60" width="20" height="18" rx="4"></rect>
+              </g>
+            </g>
+            <path class="ptr" d="M120 12 L112 26 H128 Z"></path>
+          </g>
+          <line class="horizon" x1="20" y1="158" x2="220" y2="158"></line>
+        </svg>
+        <div class="angread"><span id="roll" class="angnum">–</span><span id="rollDir" class="lbl">tap Use phone motion</span></div>
+      </div>
+
+      <div class="slot gslot">
+        <div class="lbl">G-force</div>
+        <svg class="gball" viewBox="0 0 120 120" role="img" aria-label="G-force: dot moves with acceleration, braking and cornering">
+          <circle class="face" cx="60" cy="60" r="56"></circle>
+          <circle class="ring" cx="60" cy="60" r="50"></circle><circle class="ring" cx="60" cy="60" r="25"></circle><circle class="ring" cx="60" cy="60" r="12.5"></circle>
+          <line class="axis" x1="60" y1="6" x2="60" y2="114"></line><line class="axis" x1="6" y1="60" x2="114" y2="60"></line>
+          <text class="gl" x="62" y="14">1 g</text><text class="gl" x="62" y="39">0.5</text>
+          <text class="gl" x="60" y="4" text-anchor="middle">ACCEL</text><text class="gl" x="60" y="120" text-anchor="middle">BRAKE</text>
+          <circle class="gdot" id="gdot" cx="60" cy="60" r="5"></circle>
+        </svg>
+        <div class="grow"><span><span class="lbl">Accel </span><span id="glong" class="val">–</span></span><span><span class="lbl">Corner </span><span id="glat" class="val">–</span></span></div>
+        <div class="btnrow"><button id="motionBtn" type="button" class="primary">Use phone motion</button><button id="zeroBtn" type="button" hidden>Set level</button></div>
+      </div>
+    </section>
+
+    <section class="page single" data-name="Tires">
+      <div class="slot wide">
+        <div class="lbl">Tires · target 35 psi</div>
+        <svg class="truckimg" viewBox="0 0 300 330" role="img" aria-label="Truck from above with tire pressures">
+          <g transform="translate(35 0)">
+            <rect class="body" x="70" y="20" width="90" height="290" rx="22"></rect>
+            <path class="glass" d="M78 92 Q115 78 152 92 L148 118 Q115 110 82 118 Z"></path>
+            <rect class="glass" x="80" y="176" width="70" height="10" rx="3"></rect>
+            <path class="bedline" d="M80 196 H150 V298 H80 Z M115 200 V294"></path>
+            <rect class="tyre" id="tyLF" x="56" y="46" width="16" height="44" rx="4"></rect>
+            <rect class="tyre" id="tyRF" x="158" y="46" width="16" height="44" rx="4"></rect>
+            <rect class="tyre" id="tyLR" x="56" y="226" width="16" height="44" rx="4"></rect>
+            <rect class="tyre" id="tyRR" x="158" y="226" width="16" height="44" rx="4"></rect>
+          </g>
+          <text class="tpl" x="84" y="56" text-anchor="end">FRONT L</text><text class="tp" id="tpLF" text-anchor="end" x="84" y="80">–</text>
+          <text class="tpl" x="216" y="56">FRONT R</text><text class="tp" id="tpRF" x="216" y="80">–</text>
+          <text class="tpl" x="84" y="236" text-anchor="end">REAR L</text><text class="tp" id="tpLR" text-anchor="end" x="84" y="260">–</text>
+          <text class="tpl" x="216" y="236">REAR R</text><text class="tp" id="tpRR" x="216" y="260">–</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="page trip" data-name="Trip">
+      <div class="slot" style="grid-column:span 2">
+        <div class="row"><span class="lbl">Shift log</span><span class="note" id="shiftSummary"></span></div>
+        <div class="log"><table><thead><tr><th>Time</th><th>Shift</th><th>Took</th><th>RPM</th><th>Grade</th></tr></thead><tbody id="shiftRows"></tbody></table></div>
+      </div>
+      <div class="slot">
+        <div class="lbl">Replay</div>
+        <div class="controls">
+          <button id="play" type="button">Pause</button>
+          <select id="rate" aria-label="Playback speed"><option value="1">1×</option><option value="2">2×</option><option value="4" selected>4×</option><option value="8">8×</option></select>
+          <span id="clock">0:00</span>
+        </div>
+        <input id="scrub" type="range" min="0" value="0" aria-label="Drive position">
+        <div class="lbl">Bluetooth adapter not found?</div>
+        <input id="uuid" type="text" placeholder="Service UUID, e.g. fff0" aria-label="Custom Bluetooth service UUID">
+        <p class="note">Replay gear comes from turbine and output shaft speeds matched to the 6R80 ratios; shift times are ±100 ms. Live gear is estimated from RPM and speed. Brake lights in outline when speed drops faster than 4 km/h per second. Angles come from the phone: mount it, park on flat ground, tap Set level.</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="dots" id="dots" aria-label="Pages"></nav>
 </div>
 
 <script>
@@ -318,10 +396,10 @@ const zone = ([,,,min,max,warn,bad])=> bad < warn
   ? `<path class="zone" d="${arc(50,50,46,135,a(bad,min,max))}"></path><path class="zw" d="${arc(50,50,46,a(bad,min,max),a(warn,min,max))}"></path>`
   : `<path class="zw" d="${arc(50,50,46,a(warn,min,max),a(bad,min,max))}"></path><path class="zone" d="${arc(50,50,46,a(bad,min,max),405)}"></path>`;
 const level = (v,warn,bad)=> !Number.isFinite(v) ? '' : bad < warn ? (v<=bad?' bad':v<=warn?' warn':'') : (v>=bad?' bad':v>=warn?' warn':'');
-$('gauges').innerHTML = GAUGES.map(([i,l,u],k)=>`<div class="gauge" id="g${k}">
-  <svg viewBox="0 0 100 86" aria-hidden="true"><path class="track" d="${arc(50,50,40,135,405)}"></path>${zone(GAUGES[k])}<path class="fill" d=""></path>
-  <text class="v" x="50" y="56" text-anchor="middle">–</text><text class="u" x="50" y="70" text-anchor="middle">${u}</text></svg>
-  <div class="lbl" id="gl${k}">${l}</div></div>`).join('');
+GAUGES.forEach(([i,l,u],k)=>{ $('g'+k).innerHTML = `
+  <svg viewBox="0 0 100 88" aria-hidden="true"><path class="track" d="${arc(50,50,40,135,405)}"></path>${zone(GAUGES[k])}<path class="fill" d=""></path>
+  <text class="v" x="50" y="56" text-anchor="middle">–</text><text class="u" x="50" y="69" text-anchor="middle">${u}</text></svg>
+  <div class="lbl" id="gl${k}">${l}</div>`; });
 const gaugeEls = GAUGES.map((_,k)=>{ const g=$('g'+k); return {g, fill:g.querySelector('.fill'), v:g.querySelector('.v')}; });
 // Sweep every gauge to the top and back, like a real cluster at key-on (also shows the warning colours).
 let sweepStart = matchMedia('(prefers-reduced-motion: reduce)').matches ? -1e9 : performance.now();
@@ -335,13 +413,19 @@ function setGauges(r){
   });
 }
 
-// Speedometer 0–180 km/h.
-const SP_MAX = 180;
-$('spTrack').setAttribute('d', arc(150,140,118,135,405));
-$('spTicks').innerHTML = Array.from({length:10},(_,k)=>{
-  const s=k*20, a=135+270*s/SP_MAX, [x0,y0]=pt(150,140,100,a), [x1,y1]=pt(150,140,92,a), [tx,ty]=pt(150,140,78,a);
-  return `<line class="tick" x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}"></line><text class="tl" x="${tx}" y="${ty+4}">${s}</text>`;
-}).join('');
+// Inclinometer scales: ticks every 5° to ±45°, green / amber / red bands (15° and 25° are common off-road comfort and caution angles).
+for (const id of ['scalePitch','scaleRoll']){
+  const at = d => -90 + d;
+  let h = `<path class="zg" d="${arc(120,120,104,at(-15),at(15))}"></path>`
+        + `<path class="za" d="${arc(120,120,104,at(15),at(25))}"></path><path class="za" d="${arc(120,120,104,at(-25),at(-15))}"></path>`
+        + `<path class="zr" d="${arc(120,120,104,at(25),at(45))}"></path><path class="zr" d="${arc(120,120,104,at(-45),at(-25))}"></path>`;
+  for (let d=-45; d<=45; d+=5){
+    const major = d%15===0, [x0,y0]=pt(120,120,major?92:96,at(d)), [x1,y1]=pt(120,120,101,at(d));
+    h += `<line class="tick${major?' major':''}" x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}"></line>`;
+    if (major){ const [tx,ty]=pt(120,120,82,at(d)); h += `<text class="tl" x="${tx}" y="${ty+3.5}">${Math.abs(d)}</text>`; }
+  }
+  $(id).innerHTML = h;
+}
 
 function tire(pos, kpa){
   const ty=$('ty'+pos), tp=$('tp'+pos);
@@ -365,7 +449,6 @@ function render(r, hs, prev, nowIdx){
   const sp = r[2]||0;
   showMotion(brake(r, prev));
   $('speed').textContent = Math.round(sp);
-  $('spFill').setAttribute('d', sp>0.5 ? arc(150,140,118,135,135+270*frac(sp,0,SP_MAX)) : '');
   const gEl=$('gear'); gEl.textContent = hs.g; gEl.className = 'big' + (hs.shifting?' shifting':'') + (hs.stopped?' stopped':'');
   setGauges(r);
   tire('LF',r[9]); tire('RF',r[10]); tire('RR',r[11]); tire('LR',r[12]);
@@ -382,7 +465,7 @@ function render(r, hs, prev, nowIdx){
 $('sweep').onclick = ()=>{ sweepStart = performance.now(); };
 const themeBtn = $('theme');
 const isDark = ()=> document.documentElement.dataset.theme ? document.documentElement.dataset.theme==='dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-const syncThemeBtn = ()=>{ themeBtn.textContent = isDark() ? 'Light mode' : 'Dark mode'; };
+const syncThemeBtn = ()=>{ themeBtn.textContent = isDark() ? 'Light' : 'Dark'; };
 try { const t=localStorage.getItem('dash-theme'); if (t) document.documentElement.dataset.theme=t; } catch {}
 syncThemeBtn();
 themeBtn.onclick = ()=>{ const t = isDark() ? 'light' : 'dark'; document.documentElement.dataset.theme=t; try{ localStorage.setItem('dash-theme',t); }catch{} syncThemeBtn(); };
@@ -564,16 +647,17 @@ function showMotion(decKmhS){
   }
   const gLong = mSign*along/9.81, gLat = V.dot(accLp,r)/9.81;
   const pitch = -mSign*Math.atan2(V.dot(gn,f), V.dot(gn,u)), roll = -Math.atan2(V.dot(gn,r), V.dot(gn,u));
-  const cl = v => Math.max(-1.1, Math.min(1.1, v));
+  const cl = v => Math.max(-1.08, Math.min(1.08, v));
   $('gdot').setAttribute('cx', 60 + cl(gLat)*50); $('gdot').setAttribute('cy', 60 - cl(gLong)*50);
   $('glong').textContent = (gLong>=0?'+':'') + gLong.toFixed(2)+' g';
   $('glat').textContent = Math.abs(gLat).toFixed(2)+' g ' + (Math.abs(gLat)<0.03 ? '' : gLat>0 ? 'right' : 'left');
-  $('pitch').textContent = deg(Math.abs(pitch)) + (Math.abs(pitch)<0.01 ? '' : pitch>0 ? ' up' : ' down');
-  $('roll').textContent = deg(Math.abs(roll)) + (Math.abs(roll)<0.01 ? '' : roll>0 ? ' right' : ' left');
+  $('pitch').textContent = deg(Math.abs(pitch)); $('pitchDir').textContent = Math.abs(pitch)<0.009 ? 'level' : pitch>0 ? 'nose up' : 'nose down';
+  $('roll').textContent = deg(Math.abs(roll));   $('rollDir').textContent = Math.abs(roll)<0.009 ? 'level' : roll>0 ? 'right side low' : 'left side low';
   const pd = pitch*180/Math.PI, rd = roll*180/Math.PI, lvl = d => Math.abs(d)>25 ? ' bad' : Math.abs(d)>15 ? ' warn' : '';
-  $('pitchTruck').setAttribute('transform', `rotate(${(-pd).toFixed(1)} 50 46)`); // nose up = counter-clockwise
-  $('rollTruck').setAttribute('transform', `rotate(${rd.toFixed(1)} 50 46)`);     // right side low = clockwise
-  $('pitchBox').className = 'ang' + lvl(pd); $('rollBox').className = 'ang' + lvl(rd);
+  const lim = d => Math.max(-45, Math.min(45, d)).toFixed(1);
+  $('pitchRot').style.transform = `rotate(${-lim(pd)}deg)`; // nose up = counter-clockwise
+  $('rollRot').style.transform = `rotate(${lim(rd)}deg)`;    // right side low = clockwise
+  $('pitchBox').className = 'slot ang' + lvl(pd); $('rollBox').className = 'slot ang' + lvl(rd);
 }
 $('motionBtn').onclick = async ()=>{
   try {
@@ -592,6 +676,37 @@ $('zeroBtn').onclick = ()=>{ setLevel(); status('Level set. Do this parked on fl
 let wakeLock = null;
 async function keepAwake(){ try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {} }
 document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible' && wakeLock) keepAwake(); });
+// ---------- Pages: swipe (or arrow keys / dots) between three-reading pages ----------
+const pagesEl = $('pages'), pageEls = [...pagesEl.children];
+let curPage = 0;
+$('dots').innerHTML = pageEls.map((p,i)=>`<button type="button" aria-label="${p.dataset.name}" data-i="${i}"></button>`).join('');
+const goPage = (i, smooth=true) => { i = Math.max(0, Math.min(pageEls.length-1, i)); pagesEl.scrollTo({left: i*pagesEl.clientWidth, behavior: smooth ? 'smooth' : 'auto'}); };
+function markPage(){
+  const i = Math.round(pagesEl.scrollLeft / Math.max(1, pagesEl.clientWidth));
+  curPage = i; $('pageName').textContent = pageEls[i].dataset.name;
+  [...$('dots').children].forEach((d,k)=>d.setAttribute('aria-current', k===i ? 'true' : 'false'));
+  try { localStorage.setItem('dash-page', i); } catch {}
+}
+pagesEl.addEventListener('scroll', markPage, {passive:true});
+$('dots').onclick = e => { const b = e.target.closest('button'); if (b) goPage(+b.dataset.i); };
+addEventListener('keydown', e => { if (e.target.closest('input,select')) return; if (e.key==='ArrowRight') goPage(curPage+1); if (e.key==='ArrowLeft') goPage(curPage-1); });
+addEventListener('resize', () => goPage(curPage, false)); // stay on the same page after rotating the phone
+try { curPage = +(localStorage.getItem('dash-page') || 0) || 0; } catch {}
+requestAnimationFrame(()=>{ goPage(curPage, false); markPage(); });
+
+// ---------- Full screen (laptop / Android; iPhone browsers don't allow it for pages) ----------
+$('fs').onclick = async () => {
+  const d = document, el = d.documentElement;
+  if (d.fullscreenElement || d.webkitFullscreenElement) return (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else return status('This browser does not allow full screen for web pages (iPhone). Turn the phone sideways for the largest view.');
+    screen.orientation?.lock?.('landscape').catch(()=>{});
+  } catch { status('Full screen was blocked by the browser.'); }
+};
+const fsSync = () => { $('fs').textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? 'Exit full screen' : 'Full screen'; };
+document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync);
 $('usb').onclick = connectUsb;
 if (!navigator.serial) $('usb').hidden = true; // iPhone / Bluefy: USB cables can't be used
 $('connect').onclick = connect;
