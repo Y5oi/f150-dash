@@ -538,9 +538,16 @@ async function connect(){
                 : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(raw) ? raw : null;
     if (raw && extra === null){ status('That box is only for a service UUID like fff0 or 0000fff0-0000-1000-8000-00805f9b34fb. Clear it and press Connect.'); return; }
     status('Choose your adapter (UniCarScan / OBD)…');
-    const wanted = extra !== null ? [extra, ...BLE_SERVICES] : BLE_SERVICES;
+    // Full 128-bit UUID strings: some iPhone Bluetooth browsers reject the short numeric form (0xfff0).
+    const full = u => typeof u === 'number' ? `0000${u.toString(16).padStart(4,'0')}-0000-1000-8000-00805f9b34fb` : u;
+    const wanted = (extra !== null ? [extra, ...BLE_SERVICES] : BLE_SERVICES).map(full);
     step = 'choosing adapter';
-    device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices: wanted});
+    try { device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices: wanted}); }
+    catch (e){
+      if (e?.name === 'NotFoundError') throw e;          // chooser closed: don't open it twice
+      step = 'choosing adapter (retry)';
+      device = await navigator.bluetooth.requestDevice({acceptAllDevices:true});
+    }
     try { device.addEventListener('gattserverdisconnected', ()=>status('Adapter disconnected. Press Connect to retry.')); } catch {}
     status('Connecting…'); step = 'connecting';
     const gatt = await device.gatt.connect();
