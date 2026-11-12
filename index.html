@@ -528,6 +528,7 @@ const MODE01 = { // pid: [row index, decode]
 // Ford trans fluid temp (mode 22 DID 1E1C). shortcut: formula from community PID lists, unverified on your PCM — compare with FORScan TFT once.
 const TFT = ['221E1C', '621E1C', b=>((b[0]<<24>>16)|b[1])/16];
 
+let step = '';
 async function connect(){
   if (!navigator.bluetooth){ status('This browser has no Bluetooth access. Open the downloaded file in Chrome or Edge, with Bluetooth on.'); return; }
   try {
@@ -537,26 +538,37 @@ async function connect(){
                 : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(raw) ? raw : null;
     if (raw && extra === null){ status('That box is only for a service UUID like fff0 or 0000fff0-0000-1000-8000-00805f9b34fb. Clear it and press Connect.'); return; }
     status('Choose your adapter (UniCarScan / OBD)…');
-    device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices: extra !== null ? [...BLE_SERVICES, extra] : BLE_SERVICES});
-    device.addEventListener('gattserverdisconnected', ()=>status('Adapter disconnected. Press Connect to retry.'));
-    status('Connecting…');
+    const wanted = extra !== null ? [extra, ...BLE_SERVICES] : BLE_SERVICES;
+    step = 'choosing adapter';
+    device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices: wanted});
+    try { device.addEventListener('gattserverdisconnected', ()=>status('Adapter disconnected. Press Connect to retry.')); } catch {}
+    status('Connecting…'); step = 'connecting';
     const gatt = await device.gatt.connect();
+    // Ask for each known service by name; some iPhone Bluetooth browsers (Bluefy) can't list "all services".
+    step = 'finding data channel';
+    let services = [];
+    for (const u of wanted){ try { services.push(await gatt.getPrimaryService(u)); } catch {} }
+    if (!services.length){ try { services = await gatt.getPrimaryServices(); } catch {} }
     let rx=null; tx=null;
-    for (const s of await gatt.getPrimaryServices()){
-      for (const c of await s.getCharacteristics()){
-        if (!rx && (c.properties.notify || c.properties.indicate)) rx=c;
-        if (!tx && (c.properties.write || c.properties.writeWithoutResponse)) tx=c;
+    for (const s of services){
+      let chars = []; try { chars = await s.getCharacteristics(); } catch { continue; }
+      for (const c of chars){
+        const pr = c.properties || {};
+        if (!rx && (pr.notify || pr.indicate)) rx=c;
+        if (!tx && (pr.write || pr.writeWithoutResponse)) tx=c;
       }
       if (rx && tx) break;
     }
     if (!rx || !tx){ status('Connected, but no data channel found. Find the adapter\'s service UUID with the nRF Connect app, paste it above, and connect again.'); return; }
+    step = 'starting notifications';
     await rx.startNotifications();
     rx.addEventListener('characteristicvaluechanged', e=>onText(dec.decode(e.target.value)));
-    link = { write: d => tx.properties.writeWithoutResponse ? tx.writeValueWithoutResponse(d) : tx.writeValue(d),
+    step = 'talking to adapter';
+    link = { write: d => tx.properties.writeWithoutResponse && tx.writeValueWithoutResponse ? tx.writeValueWithoutResponse(d) : tx.writeValue(d),
              connected: () => device.gatt.connected, close: () => device.gatt.disconnect() };
     await initAndStart();
   } catch (err){
-    status(err.name === 'NotFoundError' ? 'No adapter chosen. If the list was empty: unplug the adapter for 10 s, turn off Bluetooth on phones or the head unit it may be connected to, then try again.' : (err.name === 'SecurityError' ? 'Bluetooth blocked here. Open the downloaded file in Chrome or Edge instead.' : 'Connection failed: ' + err.message));
+    status(err?.name === 'NotFoundError' && step === 'choosing adapter' ? 'No adapter chosen. If the list was empty: unplug the adapter for 10 s, turn off Bluetooth on phones or the head unit it may be connected to, then try again.' : (err?.name === 'SecurityError' ? 'Bluetooth blocked here. Open the downloaded file in Chrome or Edge instead.' : `Connection failed while ${step}: ${err?.message || err?.name || String(err)}`));
   }
 }
 
