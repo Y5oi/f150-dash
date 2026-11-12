@@ -118,6 +118,13 @@ button:focus-visible,select:focus-visible,input:focus-visible,.pages:focus-visib
 .scanrow.changed{background:var(--row)} .scanrow.hot{outline:2px solid var(--warn);outline-offset:-2px}
 .scanrow .hx{overflow-wrap:anywhere}
 #scanText{width:100%;min-height:90px;font:inherit;font-size:.7rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px}
+.ctl{grid-template-rows:auto minmax(0,1fr) auto;align-content:stretch;justify-items:stretch;text-align:left}
+.ctlhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.ctlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-content:center;min-height:0}
+.ctlbtn{display:grid;gap:4px;place-items:center;padding:14px 8px;border-radius:14px;font-family:var(--display);font-size:1rem;font-weight:700;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.ctlbtn small{font-family:var(--mono);font-weight:400;font-size:.66rem;color:var(--dim)}
+.ctlbtn.on{background:var(--accent);border-color:var(--accent);color:var(--panel)} .ctlbtn.on small{color:var(--panel)}
+#armBtn.armed{background:var(--warn);border-color:var(--warn);color:var(--panel);font-weight:600}
 /* trip page */
 .trip .slot{align-content:start;justify-items:stretch;text-align:left;overflow:auto}
 .log{font-size:.78rem;overflow:auto;min-height:0}
@@ -282,6 +289,17 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--needle)}
           <text class="tpl" x="84" y="236" text-anchor="end">REAR L</text><text class="tp" id="tpLR" text-anchor="end" x="84" y="260">–</text>
           <text class="tpl" x="216" y="236">REAR R</text><text class="tp" id="tpRR" x="216" y="260">–</text>
         </svg>
+      </div>
+    </section>
+
+    <section class="page single" data-name="Controls">
+      <div class="slot wide ctl">
+        <div class="ctlhead">
+          <div><div class="lbl">Truck controls · parked only</div><div id="armState" class="note">Locked. Connect live and stop the truck.</div></div>
+          <button id="armBtn" type="button" disabled>Unlock (parked)</button>
+        </div>
+        <div class="ctlgrid" id="ctlGrid"></div>
+        <p class="note">Hold a button to run it; let go to stop. Each one stops by itself after a few seconds, and everything stops and locks the moment the truck moves or the adapter drops. Buttons marked "needs setup" wait for the exact command your truck uses, taken from a FORScan log, so nothing is ever guessed.</p>
       </div>
     </section>
 
@@ -853,6 +871,74 @@ $('copyBtn').onclick = async ()=>{
   try { await navigator.clipboard.writeText(txt); status('Results copied. Paste them to Claude.'); }
   catch { const ta=$('scanText'); ta.hidden=false; ta.value=txt; ta.focus(); ta.select(); status('Copy the selected text below and paste it to Claude.'); }
 };
+// ---------- Controls: hold-to-run outputs, parked only ----------
+// Each command is filled in only after it's confirmed from a FORScan debug log of the same test on this truck.
+// start/stop are UDS requests sent to the module after an extended diagnostic session (10 03).
+const CONTROLS = [
+  {id:'horn',   label:'Horn',             mod:'BCM', maxMs:3000,  start:null, stop:null},
+  {id:'low',    label:'Headlights',       mod:'BCM', maxMs:10000, start:null, stop:null},
+  {id:'high',   label:'High beams',       mod:'BCM', maxMs:10000, start:null, stop:null},
+  {id:'park',   label:'Parking lights',   mod:'BCM', maxMs:10000, start:null, stop:null},
+  {id:'fanlo',  label:'Cooling fan low',  mod:'PCM', maxMs:30000, start:null, stop:null},
+  {id:'fanhi',  label:'Cooling fan high', mod:'PCM', maxMs:30000, start:null, stop:null},
+];
+let armed = false, zeroSince = 0, running = null;
+$('ctlGrid').innerHTML = CONTROLS.map(c=>`<button type="button" class="ctlbtn" id="c_${c.id}" disabled>${c.label}<small>${c.start?'hold to run':'needs setup'}</small></button>`).join('');
+const parkedNow = () => mode==='live' && link && liveRow && liveRow[2]===0 && zeroSince && performance.now()-zeroSince > 3000;
+function setArmed(on, why){
+  armed = on; $('armBtn').classList.toggle('armed', on); $('armBtn').textContent = on ? 'Lock' : 'Unlock (parked)';
+  CONTROLS.forEach(c=>{ $('c_'+c.id).disabled = !on || !c.start; });
+  if (why) $('armState').textContent = why;
+}
+// Watch the interlock every 250 ms: speed must read exactly 0 for 3 s; any movement or disconnect locks everything.
+setInterval(()=>{
+  const v = mode==='live' && liveRow ? liveRow[2] : NaN;
+  if (v===0){ if (!zeroSince) zeroSince = performance.now(); } else zeroSince = 0;
+  $('armBtn').disabled = !armed && !parkedNow();
+  if (armed && !parkedNow() && !running) setArmed(false, 'Locked: truck moved or adapter disconnected.');
+  if (!armed) $('armState').textContent = mode!=='live' ? 'Locked. Connect live and stop the truck.' : parkedNow() ? 'Stopped. Tap Unlock to use the controls.' : 'Locked while moving. Stop and wait 3 seconds.';
+}, 250);
+$('armBtn').onclick = ()=> armed ? setArmed(false, 'Locked.') : parkedNow() && setArmed(true, 'Unlocked. Hold a button to run it. Locks again if the truck moves.');
+
+async function runControl(c, btn){
+  if (running || !armed || !c.start) return;
+  if (!await pauseLive()) return;
+  running = c; btn.classList.add('on'); let stopWhy = 'Released.';
+  const [txh, rxh] = MODULES[c.mod], t0 = performance.now();
+  const toModule = async ()=>{ await send('ATSH'+txh); await send('ATCRA'+rxh); };
+  try {
+    await toModule();
+    if (/^7F/.test((await send('1003')).replace(/\s/g,''))) throw new Error(`${c.mod} refused the test session`);
+    const r = (await send(c.start)).replace(/\s/g,'');
+    if (/^7F/.test(r) || /NO DATA|\?/.test(r)) throw new Error(`${c.mod} refused the command (${r})`);
+    let lastKeep = performance.now(), lastSpeed = 0;
+    while (running===c && btn.dataset.held==='1'){
+      const now = performance.now();
+      if (now - t0 > c.maxMs){ stopWhy = 'Stopped after the time limit.'; break; }
+      if (now - lastKeep > 1500){ await send('3E00'); lastKeep = now; } // keep the test session alive
+      if (now - lastSpeed > 500){ // re-check speed from the PCM while running
+        await send('ATSH7E0'); await send('ATAR'); const s = parse01(await send('010D'+(countDigit?'1':'')))['0D'];
+        await toModule(); lastSpeed = now;
+        if (!s || s[0] !== 0){ stopWhy = 'Stopped: truck moving or speed unreadable.'; setArmed(false); break; }
+      }
+      await new Promise(r=>setTimeout(r,60));
+    }
+  } catch (e){ stopWhy = 'Stopped: ' + (e?.message || e); }
+  finally {
+    try { await toModule(); if (c.stop) await send(c.stop); await send('1001'); } catch {}
+    btn.classList.remove('on'); running = null; status(`${c.label}: ${stopWhy}`);
+    await resumeLive();
+  }
+}
+CONTROLS.forEach(c=>{
+  const b = $('c_'+c.id);
+  const down = e => { e.preventDefault(); b.dataset.held='1'; runControl(c, b); };
+  const up = () => { b.dataset.held='0'; };
+  b.addEventListener('pointerdown', down); ['pointerup','pointercancel','pointerleave','blur'].forEach(ev=>b.addEventListener(ev, up));
+  b.addEventListener('keydown', e=>{ if ((e.key===' '||e.key==='Enter') && b.dataset.held!=='1') down(e); });
+  b.addEventListener('keyup', e=>{ if (e.key===' '||e.key==='Enter') up(); });
+});
+document.addEventListener('visibilitychange', ()=>{ if (document.hidden && running) $('c_'+running.id).dataset.held='0'; });
 $('usb').onclick = connectUsb;
 if (!navigator.serial) $('usb').hidden = true; // iPhone / Bluefy: USB cables can't be used
 $('connect').onclick = connect;
