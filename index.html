@@ -111,6 +111,13 @@ button:focus-visible,select:focus-visible,input:focus-visible,.pages:focus-visib
 .tp{font-family:var(--display);font-weight:700;font-size:22px;fill:var(--fg)} .tp.none{fill:var(--dim);font-size:15px}
 .tpl{font-size:10px;fill:var(--dim);font-family:var(--mono);letter-spacing:.1em}
 
+.scan{grid-template-rows:auto auto auto minmax(0,1fr) auto;align-content:stretch;justify-items:stretch;text-align:left}
+.scan .controls select,.scan .controls input{flex:1 1 160px}
+.scanlist{overflow:auto;min-height:0;font-size:.74rem;font-variant-numeric:tabular-nums;border-top:1px solid var(--line)}
+.scanrow{display:grid;grid-template-columns:4.5em 4em minmax(0,1fr) auto;gap:8px;padding:3px 4px;border-bottom:1px solid var(--line)}
+.scanrow.changed{background:var(--row)} .scanrow.hot{outline:2px solid var(--warn);outline-offset:-2px}
+.scanrow .hx{overflow-wrap:anywhere}
+#scanText{width:100%;min-height:90px;font:inherit;font-size:.7rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px}
 /* trip page */
 .trip .slot{align-content:start;justify-items:stretch;text-align:left;overflow:auto}
 .log{font-size:.78rem;overflow:auto;min-height:0}
@@ -278,6 +285,30 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--needle)}
       </div>
     </section>
 
+    <section class="page single" data-name="Scanner">
+      <div class="slot wide scan">
+        <div class="lbl">Find hidden truck data · read-only</div>
+        <div class="controls">
+          <select id="scanMod" aria-label="Module to scan">
+            <option value="ABS">ABS · g-forces, yaw, wheel speeds</option>
+            <option value="BCM">BCM · tire pressures</option>
+            <option value="PCM">PCM · brake switch, engine</option>
+            <option value="RCM">RCM · airbag module sensors</option>
+            <option value="PSCM">PSCM · steering angle</option>
+            <option value="IPC">IPC · cluster</option>
+          </select>
+          <input id="scanRange" type="text" placeholder="Ranges like 2800-28FF (blank = quick set)" aria-label="DID ranges to scan">
+          <button id="scanBtn" type="button" class="primary">Scan module</button>
+          <button id="watchBtn" type="button">Watch for changes</button>
+          <button id="pruneBtn" type="button">Keep only changed</button>
+          <button id="copyBtn" type="button">Copy results</button>
+        </div>
+        <p class="note">Connect first. 1) Pick a module and tap Scan (2–4 min, parked, engine running). 2) Tap Watch, then do one thing at a time: press the brake, tilt or turn, and see which rows light up. 3) Tap Keep only changed to speed up, then Copy results and paste them to Claude. This only reads values; it never changes anything in the truck.</p>
+        <div class="scanlist" id="scanList"><p class="note">No scan yet.</p></div>
+        <textarea id="scanText" hidden readonly aria-label="Results to copy"></textarea>
+      </div>
+    </section>
+
     <section class="page trip" data-name="Trip">
       <div class="slot" style="grid-column:span 2">
         <div class="row"><span class="lbl">Shift log</span><span class="note" id="shiftSummary"></span></div>
@@ -438,9 +469,10 @@ function tire(pos, kpa){
 // Brake: real switch if the row has one (index 13), else inferred from deceleration over ~1 s.
 function brake(r, prev){
   const dt = prev ? (r[0]-prev[0])/1000 : 0;
-  const dec = dt>0.3 && Number.isFinite(prev[2]) && Number.isFinite(r[2]) ? (prev[2]-r[2])/dt : NaN; // km/h per s
+  const dec = dt>0.2 && Number.isFinite(prev[2]) && Number.isFinite(r[2]) ? (prev[2]-r[2])/dt : NaN; // km/h per s
   const sw = r[13];
-  $('brake').className = 'lamp' + (sw===1 ? ' on' : sw===0 ? '' : dec>4 ? ' guess' : '');
+  const off = !(r[3] > 4); // throttle closed (or unknown): slowing hard then means brakes, not just lifting off
+  $('brake').className = 'lamp' + (sw===1 ? ' on' : sw===0 ? '' : off && dec>3 ? ' guess' : '');
   $('decel').textContent = dec>0.5 ? `Slowing ${dec.toFixed(1)} km/h/s · ${(dec/35.3).toFixed(2)} g` : '–';
   return dec;
 }
@@ -483,8 +515,8 @@ function loop(now){
   const dt=(now-last)/1000; last=now;
   if (mode==='replay'){
     if (playing){ acc += dt*1000*(+$('rate').value); while (acc>=100 && idx<D.length-1){ acc-=100; idx++; } if (idx>=D.length-1) idx=0; }
-    render(D[idx], held[idx], D[Math.max(0,idx-10)], idx);
-  } else if (liveRow){ if (!livePrev || liveRow[0]-livePrev[0] > 1000) livePrev = liveRow; render(liveRow, liveHs, livePrev, 0); }
+    render(D[idx], held[idx], D[Math.max(0,idx-5)], idx);
+  } else if (liveRow){ if (!livePrev || liveRow[0]-livePrev[0] > 500) livePrev = liveRow; render(liveRow, liveHs, livePrev, 0); }
   requestAnimationFrame(loop);
 }
 idx = Math.max(0, (shifts[3]?.i ?? 0) - 40); // open on a moving section, not the idle start
@@ -508,8 +540,10 @@ function onText(s){ buf += s; const p = buf.indexOf('>'); if (p>=0){ const txt=b
 async function initAndStart(){
   status('Setting up adapter…');
   await send('ATZ', 3000);
-  for (const c of ['ATE0','ATL0','ATS0','ATH0','ATSP6','ATSH7E0']) await send(c); // CAN 500k, talk to the PCM
+  for (const c of ['ATE0','ATL0','ATS0','ATH0','ATSP6','ATSH7E0','ATAT2']) await send(c); // CAN 500k, PCM, aggressive adaptive timing
   const ok = parse(await send('0100', 5000), '4100');
+  // A trailing "1" tells the adapter only one answer is coming, so it replies at once instead of waiting ~100 ms for more.
+  countDigit = !/\?/.test(await send('010C1'));
   if (!ok){ status('Adapter answered, but the truck did not. Turn the ignition on (USB cable: switch on HS) and connect again.'); return; }
   keepAwake();
   startLive();
@@ -521,6 +555,22 @@ function parse(txt, header){
   const body = hex.slice(at+header.length).match(/../g) || [];
   const bytes = body.map(h=>parseInt(h,16)); return bytes.some(Number.isNaN) ? null : bytes;
 }
+// Mode 01 reply holding one or more PIDs, e.g. "410C1AF80D32" -> {0C:[0x1A,0xF8], 0D:[0x32]}.
+const LEN01 = {'0C':2,'0D':1,'11':1,'04':1,'05':1,'2F':1};
+function parse01(txt){
+  const hex = txt.replace(/SEARCHING\.\.\.|\s/g,'').toUpperCase(), out = {};
+  let j = hex.indexOf('41'); if (j<0) return out; j += 2;
+  while (j < hex.length){
+    if (!LEN01[hex.substr(j,2)] && hex.substr(j,2)==='41') { j += 2; continue; } // second reply line
+    const pid = hex.substr(j,2), n = LEN01[pid]; if (!n) break;
+    const b = (hex.substr(j+2, n*2).match(/../g) || []).map(h=>parseInt(h,16));
+    if (b.length < n || b.some(Number.isNaN)) break;
+    out[pid] = b; j += 2 + n*2;
+  }
+  return out;
+}
+console.assert(parse01('410C1AF80D32')['0D'][0]===0x32 && parse01('410C1AF8')['0C'][1]===0xF8, 'parse01');
+let countDigit = false, scanBusy = false, loopParked = true;
 const MODE01 = { // pid: [row index, decode]
   '0C':[1, b=>(b[0]*256+b[1])/4], '0D':[2, b=>b[0]], '11':[3, b=>b[0]*100/255],
   '04':[4, b=>b[0]*100/255], '05':[5, b=>b[0]-40], '2F':[14, b=>b[0]*100/255],
@@ -587,22 +637,30 @@ async function startLive(){
   const t0 = performance.now(); let n=0, tftOk=true, okCount=0, lastRate=performance.now();
   const row = [0, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN];
   const slow = ['11','04','05','TFT','2F'];
+  const take = (pid, b) => { const [i, dec] = MODE01[pid], v = dec(b); okCount++;
+    // Fuel sender sloshes on every bump and turn: average over ~30 s like the factory gauge does.
+    row[i] = pid==='2F' && Number.isFinite(row[i]) ? row[i] + (v-row[i])*0.03 : v; };
+  let multi = true;
   while (mode==='live' && link?.connected()){
-    const pids = ['0C','0D', slow[n++ % slow.length]];
+    if (scanBusy){ loopParked = true; await new Promise(r=>setTimeout(r,80)); continue; }
+    loopParked = false;
+    const pids = [];
+    if (multi){ // RPM + speed in one request (fits one CAN frame)
+      const got = parse01(await send('010C0D' + (countDigit?'1':'')));
+      if (got['0C']) take('0C', got['0C']);
+      if (got['0D']) take('0D', got['0D']); else if (got['0C']) multi = false; // adapter can't do two at once
+    } else pids.push('0C','0D');
+    if (n++ % 2 === 0) pids.push(slow[(n>>1) % slow.length]); // slower values every other cycle
     for (const pid of pids){
       if (pid==='TFT'){
         if (!tftOk) continue;
-        const b = parse(await send(TFT[0]), TFT[1]);
+        const b = parse(await send(TFT[0] + (countDigit?'1':'')), TFT[1]);
         const v = b && b.length>=2 ? TFT[2](b) : NaN;
         if (Number.isFinite(v) && v>-40 && v<160) row[6]=v; else tftOk=false; // no answer or nonsense: stop asking
         continue;
       }
-      const b = parse(await send('01'+pid), '41'+pid);
-      if (b){
-        const [i, dec] = MODE01[pid], v = dec(b); okCount++;
-        // Fuel sender sloshes on every bump and turn: average over ~30 s like the factory gauge does.
-        row[i] = pid==='2F' && Number.isFinite(row[i]) ? row[i] + (v-row[i])*0.03 : v;
-      }
+      const b = parse(await send('01'+pid + (countDigit?'1':'')), '41'+pid);
+      if (b) take(pid, b);
     }
     row[0] = performance.now()-t0;
     row[8] = row[2]*OSS_PER_KMH;
@@ -726,6 +784,75 @@ $('fs').onclick = async () => {
 };
 const fsSync = () => { $('fs').textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? 'Exit full screen' : 'Full screen'; };
 document.addEventListener('fullscreenchange', fsSync); document.addEventListener('webkitfullscreenchange', fsSync);
+// ---------- Scanner: find which Ford-specific values (mode 22 DIDs) each module answers, then watch which ones move ----------
+const MODULES = {PCM:['7E0','7E8'], ABS:['760','768'], BCM:['726','72E'], RCM:['737','73F'], PSCM:['730','738'], IPC:['720','728']};
+// shortcut: quick set = DID blocks Ford commonly uses (~2,300 IDs); widen with the ranges box if a value isn't found.
+const QUICK = [[0x0300,0x03FF],[0x1100,0x11FF],[0x1600,0x16FF],[0x1E00,0x1EFF],[0x2800,0x28FF],[0x2B00,0x2BFF],[0x4000,0x41FF],[0xDD00,0xDDFF]];
+const hex4 = n => n.toString(16).toUpperCase().padStart(4,'0');
+let found = {}, watching = false;
+function parseRanges(s){
+  const rs = [...s.matchAll(/([0-9a-f]{1,4})\s*-\s*([0-9a-f]{1,4})/gi)].map(m=>[parseInt(m[1],16), parseInt(m[2],16)]).filter(([a,b])=>a<=b);
+  return rs.length ? rs : null;
+}
+async function pauseLive(){
+  if (mode!=='live' || !link){ status('Connect to the truck first, then use the scanner.'); return false; }
+  scanBusy = true; while (!loopParked && mode==='live') await new Promise(r=>setTimeout(r,20));
+  return true;
+}
+async function resumeLive(){ try { await send('ATST32'); await send('ATSH7E0'); await send('ATAR'); } finally { scanBusy = false; } }
+const readDid = async did => { const b = parse(await send('22'+hex4(did)+(countDigit?'1':''), 600), '62'+hex4(did)); return b && b.length ? b : null; };
+function showFound(){
+  const mod = $('scanMod').value, rows = Object.values(found).filter(f=>f.mod===mod)
+    .sort((a,b)=>(b.changes-a.changes) || (a.did-b.did));
+  $('scanList').innerHTML = rows.length ? rows.map(f=>{
+    const b=f.bytes, u = b.length>=2 ? (b[0]<<8|b[1]) : b[0], s = b.length>=2 ? ((b[0]<<24>>16)|b[1]) : (b[0]<<24>>24);
+    return `<div class="scanrow${f.changes?' changed':''}${performance.now()-f.at<2500?' hot':''}"><span>${f.mod}</span><span>${hex4(f.did)}</span><span class="hx">${b.map(x=>x.toString(16).padStart(2,'0')).join(' ')} · u=${u} s=${s}</span><span>${f.changes? f.changes+'×':''}</span></div>`;
+  }).join('') : '<p class="note">Nothing found in this module yet.</p>';
+}
+$('scanBtn').onclick = async ()=>{
+  if (watching) return status('Stop watching first.');
+  if (!await pauseLive()) return;
+  const mod = $('scanMod').value, [txh, rxh] = MODULES[mod], ranges = parseRanges($('scanRange').value) || QUICK;
+  const total = ranges.reduce((a,[x,y])=>a+y-x+1,0); let done = 0, hits = 0, silent = 0;
+  try {
+    await send('ATSH'+txh); await send('ATCRA'+rxh); await send('ATST19'); // ~100 ms wait for IDs the module doesn't have
+    outer: for (const [a,b] of ranges) for (let did=a; did<=b; did++){
+      const txt = await send('22'+hex4(did)+(countDigit?'1':''), 800); done++;
+      const bytes = parse(txt, '62'+hex4(did));
+      if (bytes && bytes.length){ hits++; found[mod+did] = {mod, did, bytes, base:bytes.join(), changes:0, at:0}; }
+      else if (/NO DATA|TIMEOUT|CAN ERROR/.test(txt)) silent++;
+      if (done===40 && hits===0 && silent===done){ status(`${mod} didn't answer. This adapter may not reach that module; try the USB cable on a laptop.`); break outer; }
+      if (done % 25 === 0){ status(`Scanning ${mod}: ${done}/${total} · found ${hits}`); showFound(); }
+      if (mode!=='live') break outer;
+    }
+    if (hits) status(`Scan of ${mod} done: ${hits} values found. Tap Watch for changes.`);
+  } catch (e){ status('Scan stopped: ' + (e?.message || e)); }
+  finally { await resumeLive(); showFound(); }
+};
+$('watchBtn').onclick = async ()=>{
+  if (watching){ watching = false; return; }
+  const mod = $('scanMod').value, list = Object.values(found).filter(f=>f.mod===mod);
+  if (!list.length) return status('Scan this module first.');
+  if (!await pauseLive()) return;
+  watching = true; $('watchBtn').textContent = 'Stop watching';
+  try {
+    await send('ATSH'+MODULES[mod][0]); await send('ATCRA'+MODULES[mod][1]); await send('ATST19');
+    let k = 0, t0 = performance.now();
+    while (watching && mode==='live'){
+      const f = list[k++ % list.length], b = await readDid(f.did);
+      if (b){ const j = b.join(); if (j !== f.bytes.join()){ f.at = performance.now(); if (j !== f.base) f.changes++; } f.bytes = b; }
+      if (k % list.length === 0){ status(`Watching ${list.length} values · one pass every ${((performance.now()-t0)/1000).toFixed(1)} s`); t0 = performance.now(); }
+      if (k % 5 === 0) showFound();
+    }
+  } finally { watching = false; $('watchBtn').textContent = 'Watch for changes'; await resumeLive(); showFound(); }
+};
+$('pruneBtn').onclick = ()=>{ const mod=$('scanMod').value; for (const [key,f] of Object.entries(found)) if (f.mod===mod && !f.changes) delete found[key]; showFound(); status('Kept only values that changed. Watch again to narrow down.'); };
+$('scanMod').onchange = showFound;
+$('copyBtn').onclick = async ()=>{
+  const txt = 'F-150 scan\n' + Object.values(found).map(f=>`${f.mod} ${hex4(f.did)} changed=${f.changes} now=${f.bytes.map(x=>x.toString(16).padStart(2,'0')).join(' ')} first=${f.base.split(',').map(x=>(+x).toString(16).padStart(2,'0')).join(' ')}`).join('\n');
+  try { await navigator.clipboard.writeText(txt); status('Results copied. Paste them to Claude.'); }
+  catch { const ta=$('scanText'); ta.hidden=false; ta.value=txt; ta.focus(); ta.select(); status('Copy the selected text below and paste it to Claude.'); }
+};
 $('usb').onclick = connectUsb;
 if (!navigator.serial) $('usb').hidden = true; // iPhone / Bluefy: USB cables can't be used
 $('connect').onclick = connect;
